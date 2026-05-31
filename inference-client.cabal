@@ -51,9 +51,18 @@ common warnings
     ghc-options: -Wall
 
 library
-  exposed-modules:    Inference.Protocol
+  exposed-modules:    
+    Inference.Client
+    Inference.Protocol
+    Inference.Codec
+
   hs-source-dirs:     src
-  build-depends:      base ^>=4.20.2.0
+  
+  build-depends:      
+      base ^>=4.20.2.0
+    , binary
+    , bytestring
+    , text
 
 executable inference-client
     -- Import common warning flags.
@@ -71,10 +80,8 @@ executable inference-client
     -- Other library packages from which modules are imported.
     build-depends:    
         inference-client
-        base&
-      , bytestring
-      , binary 
-      
+      , base ^>=4.20.2.0
+
     -- Directories containing source files.
     hs-source-dirs:   app
 
