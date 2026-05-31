@@ -1,8 +1,8 @@
 module Inference.Codec where
 
-import Inference.Protocol (Request (..), opcodeToWord, Response (Response), okResponse, errorResponse)
+import Inference.Protocol (Request (..), opcodeToWord, Response (Response), okResponse, errorResponse, InferenceErrorCode, wordToInferenceErrorCode)
 import qualified Data.ByteString as BS
-import Data.Word (Word32, Word64)
+import Data.Word (Word32, Word64, Word8)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Binary.Put (runPut, putWord32le, putWord64le, putWord8, putByteString)
 import Data.Binary.Get (runGet, getWord8, Get, runGetOrFail, getWord64be, getWord64le, getDoublele)
@@ -33,17 +33,16 @@ deserializeResponse byteString = case runGetOrFail deserialize (BS.fromStrict by
     deserialize = do 
       status <- getWord8
       id <- getWord64le
+      let partialResponse = Response id
       case status of
-        1 -> deserializeErrorResponse id 
-        0 -> deserializeSuccessResponse id
+        1 -> deserializeErrorResponse partialResponse
+        0 -> deserializeSuccessResponse partialResponse
         _ -> fail "unknown error code"
 
-deserializeSuccessResponse :: Word64 -> Get Response
-deserializeSuccessResponse responseId = do 
-  value <- getDoublele
-  pure $ okResponse responseId value
+type PartialResponse = Either InferenceErrorCode Double -> Response
 
-deserializeErrorResponse :: Word64 -> Get Response
-deserializeErrorResponse responseId = do
-  errorCode <- getWord8
-  pure $ errorResponse responseId errorCode
+deserializeSuccessResponse :: PartialResponse -> Get Response
+deserializeSuccessResponse = (<$> getDoublele) . (. Right)
+
+deserializeErrorResponse :: PartialResponse -> Get Response
+deserializeErrorResponse = (<$> getWord8) . (. Left . wordToInferenceErrorCode)
