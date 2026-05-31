@@ -1,6 +1,5 @@
 module Inference.Client where
 
-import Data.ByteString
 import qualified Data.ByteString as BS
 import Inference.Codec
   ( deserializeResponse,
