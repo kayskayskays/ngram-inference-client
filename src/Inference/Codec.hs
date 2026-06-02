@@ -34,11 +34,15 @@ import Inference.Protocol
   )
 
 requestPrefixLength :: Word32
-requestPrefixLength = 13
+requestPrefixLength = 9
 
 requestLength :: BS.ByteString -> Word32
 requestLength = (+ requestPrefixLength) . fromIntegral . BS.length
 
+-- |
+-- >>> import qualified Data.Text as T
+-- >>> import Inference.Protocol (Opcode (..))
+-- >>> serializeRequest $ Request { requestId=1, opcode=Perplexity, text=T.pack "hi"}
 serializeRequest :: Request -> BS.ByteString
 serializeRequest request = BS.toStrict $ runPut $ do
   let encodedText = encodeRequestText request
@@ -67,8 +71,8 @@ deserializeResponse byteString = case runGetOrFail deserialize (BS.fromStrict by
       id <- getWord64le
       let partialResponse = Response id
       case status of
-        1 -> deserializeErrorResponse partialResponse
         0 -> deserializeSuccessResponse partialResponse
+        1 -> deserializeErrorResponse partialResponse
         _ -> fail "unknown error code"
 
 type PartialResponse = Either InferenceErrorCode Double -> Response
