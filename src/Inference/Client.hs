@@ -1,9 +1,18 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Inference.Client where
 
+import Control.Monad.State
+  ( MonadIO (liftIO),
+    MonadState (get, put),
+    StateT,
+    evalStateT,
+  )
+import Control.Monad.Trans (lift)
+import Data.Binary (Word64)
 import qualified Data.ByteString as BS
+import Data.Text (Text, pack)
 import Inference.Codec
   ( deserializeResponse,
     errorResponseBodyLength,
@@ -11,14 +20,12 @@ import Inference.Codec
     successResponseBodyLength,
   )
 import Inference.Protocol
-  ( Request (..),
-    Response (value, Response), Opcode (Perplexity), InferenceErrorCode,
+  ( InferenceErrorCode,
+    Opcode (Perplexity),
+    Request (..),
+    Response (Response, value),
   )
-import System.IO
-import Data.Text (Text, pack)
-import Data.Binary (Word64)
-import Control.Monad.State (StateT (runStateT), MonadState (..), MonadIO (liftIO), evalStateT)
-import Control.Monad.Trans (lift)
+import System.IO (Handle)
 
 data Connection = Connection
   { cxnWrite :: BS.ByteString -> IO (),
@@ -26,10 +33,12 @@ data Connection = Connection
   }
 
 type RequestId = Word64
+
 type Client m a = StateT RequestId m a
+
 type PartialRequest = RequestId -> Request
 
-class Monad m => QuoteRepository m where
+class (Monad m) => QuoteRepository m where
   nextQuote :: m Text
 
 connectionFromHandle :: Handle -> Connection
@@ -51,7 +60,7 @@ receiveResponse cxn = do
     _ -> pure $ Left "unknown status"
 
 search :: (QuoteRepository m, MonadIO m) => Connection -> m Response
-search cxn = 
+search cxn =
   evalStateT search0 0
   where
     search0 :: (QuoteRepository m, MonadIO m) => Client m Response
@@ -61,8 +70,7 @@ search cxn =
 
       case result of
         Left err -> search0
-
-        Right response -> 
+        Right response ->
           if testResponse response
             then pure response
             else search0
@@ -76,16 +84,16 @@ testResponse _ = False
 
 perplexity :: (MonadIO m, MonadState RequestId m) => Connection -> Text -> m (Either String Response)
 perplexity cxn txt = do
-    request <- prepareRequest $ \requestId -> 
-        Request 
-          { requestId = requestId
-          , opcode = Perplexity
-          , text = txt 
-          }
-    clientSend cxn request
+  request <- prepareRequest $ \requestId ->
+    Request
+      { requestId = requestId,
+        opcode = Perplexity,
+        text = txt
+      }
+  clientSend cxn request
 
-clientSend :: MonadIO m => Connection -> Request -> m (Either String Response)
-clientSend cxn request = do 
+clientSend :: (MonadIO m) => Connection -> Request -> m (Either String Response)
+clientSend cxn request = do
   liftIO $ sendRequest cxn request
   liftIO $ receiveResponse cxn
 
@@ -94,7 +102,7 @@ prepareRequest partial = do
   requestId <- allocateId
   pure $ partial requestId
 
-allocateId :: MonadState RequestId m => m RequestId
+allocateId :: (MonadState RequestId m) => m RequestId
 allocateId = do
   currentId <- get
   put (currentId + 1)
