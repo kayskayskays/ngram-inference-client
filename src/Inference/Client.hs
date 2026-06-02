@@ -1,5 +1,5 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Inference.Client where
 
@@ -18,6 +18,7 @@ import System.IO
 import Data.Text (Text, pack)
 import Data.Binary (Word64)
 import Control.Monad.State (StateT (runStateT), MonadState (..), MonadIO (liftIO), evalStateT)
+import Control.Monad.Trans (lift)
 
 data Connection = Connection
   { cxnWrite :: BS.ByteString -> IO (),
@@ -25,10 +26,11 @@ data Connection = Connection
   }
 
 type RequestId = Word64
-type Client a = StateT RequestId IO a
+type Client m a = StateT RequestId m a
 type PartialRequest = RequestId -> Request
 
-data QuoteRepository = Nothing
+class Monad m => QuoteRepository m where
+  nextQuote :: m Text
 
 connectionFromHandle :: Handle -> Connection
 connectionFromHandle handle =
@@ -48,52 +50,51 @@ receiveResponse cxn = do
     1 -> deserializeResponse . (status <>) <$> cxnRead cxn errorResponseBodyLength
     _ -> pure $ Left "unknown status"
 
-nextQuote :: QuoteRepository -> Text
-nextQuote repo = pack ""
-
-threshold :: (Double, Double)
-threshold = (5, 90)
-
-search :: Connection -> QuoteRepository -> IO Response
-search cxn repo = 
+search :: (QuoteRepository m, MonadIO m) => Connection -> m Response
+search cxn = 
   evalStateT search0 0
   where
-    search0 :: Client Response
+    search0 :: (QuoteRepository m, MonadIO m) => Client m Response
     search0 = do
-      let quote = nextQuote repo
-
-      request <- prepareRequest $ \requestId -> 
-        Request 
-          { requestId=requestId
-          , opcode=Perplexity
-          , text=quote 
-          }
-
-      result <- clientSend cxn request
+      quote <- lift nextQuote
+      result <- perplexity cxn quote
 
       case result of
         Left err -> search0
 
         Right response -> 
-          if withinThreshold threshold response
+          if testResponse response
             then pure response
             else search0
 
-withinThreshold :: (Double, Double) -> Response -> Bool
-withinThreshold threshold (Response _ (Right value)) = fst threshold > value && value < snd threshold
-withinThreshold _ _ = False
+threshold :: (Double, Double)
+threshold = (5, 90)
 
-clientSend :: Connection -> Request -> Client (Either String Response)
+testResponse :: Response -> Bool
+testResponse (Response _ (Right value)) = fst threshold > value && value < snd threshold
+testResponse _ = False
+
+perplexity :: (MonadIO m, MonadState RequestId m) => Connection -> Text -> m (Either String Response)
+perplexity cxn txt = do
+    request <- prepareRequest $ \requestId -> 
+        Request 
+          { requestId = requestId
+          , opcode = Perplexity
+          , text = txt 
+          }
+    clientSend cxn request
+
+clientSend :: MonadIO m => Connection -> Request -> m (Either String Response)
 clientSend cxn request = do 
   liftIO $ sendRequest cxn request
   liftIO $ receiveResponse cxn
 
-prepareRequest :: PartialRequest -> Client Request
+prepareRequest :: (MonadIO m, MonadState RequestId m) => PartialRequest -> m Request
 prepareRequest partial = do
   requestId <- allocateId
   pure $ partial requestId
 
-allocateId :: Client RequestId
+allocateId :: MonadState RequestId m => m RequestId
 allocateId = do
   currentId <- get
   put (currentId + 1)

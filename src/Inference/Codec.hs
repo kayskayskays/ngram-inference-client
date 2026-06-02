@@ -39,10 +39,6 @@ requestPrefixLength = 9
 requestLength :: BS.ByteString -> Word32
 requestLength = (+ requestPrefixLength) . fromIntegral . BS.length
 
--- |
--- >>> import qualified Data.Text as T
--- >>> import Inference.Protocol (Opcode (..))
--- >>> serializeRequest $ Request { requestId=1, opcode=Perplexity, text=T.pack "hi"}
 serializeRequest :: Request -> BS.ByteString
 serializeRequest request = BS.toStrict $ runPut $ do
   let encodedText = encodeRequestText request
