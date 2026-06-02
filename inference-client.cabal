@@ -63,6 +63,7 @@ library
     , binary
     , bytestring
     , text
+    , mtl
 
 executable inference-client
     -- Import common warning flags.
