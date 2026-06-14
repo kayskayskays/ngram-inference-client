@@ -23,14 +23,13 @@ import Data.Word (
   Word64,
   Word8,
  )
+import Inference.Error (CodecError (DeserializationError), InferenceErrorCode, wordToInferenceErrorCode)
 import Inference.Protocol (
-  InferenceErrorCode,
   Request (..),
   Response (Response),
   errorResponse,
   okResponse,
   opcodeToWord,
-  wordToInferenceErrorCode,
  )
 
 requestPrefixLength :: Word32
@@ -57,9 +56,9 @@ successResponseBodyLength = 16
 errorResponseBodyLength :: Int
 errorResponseBodyLength = 8
 
-deserializeResponse :: BS.ByteString -> Either String Response
+deserializeResponse :: BS.ByteString -> Either CodecError Response
 deserializeResponse byteString = case runGetOrFail deserialize (BS.fromStrict byteString) of
-  Left (_, _, err) -> Left err
+  Left (_, _, err) -> Left $ DeserializationError err
   Right (_, _, val) -> Right val
  where
   deserialize = do
@@ -69,7 +68,7 @@ deserializeResponse byteString = case runGetOrFail deserialize (BS.fromStrict by
     case status of
       0 -> deserializeSuccessResponse partialResponse
       1 -> deserializeErrorResponse partialResponse
-      _ -> fail "unknown error code"
+      _ -> fail "unknown status"
 
 type PartialResponse = Either InferenceErrorCode Double -> Response
 

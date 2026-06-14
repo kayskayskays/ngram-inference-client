@@ -9,6 +9,7 @@ import Control.Monad.State (
   evalStateT,
  )
 import Control.Monad.Trans (lift)
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Binary (Word64)
 import qualified Data.ByteString as BS
 import Data.Text (Text, pack)
@@ -19,11 +20,11 @@ import Inference.Codec (
   serializeRequest,
   successResponseBodyLength,
  )
+import Inference.Error (CodecError (DeserializationError), ProtocolError (CodecError, OutOfOrderError))
 import Inference.Protocol (
-  InferenceErrorCode,
   Opcode (Perplexity),
   Request (..),
-  Response (Response, value),
+  Response (Response, responseId, value),
  )
 import System.IO (Handle)
 
@@ -44,17 +45,6 @@ connectionFromHandle handle =
     { cxnWrite = BS.hPut handle
     , cxnRead = BS.hGet handle
     }
-
-sendRequest :: Connection -> Request -> IO ()
-sendRequest = (. serializeRequest) . cxnWrite
-
-receiveResponse :: Connection -> IO (Either String Response)
-receiveResponse cxn = do
-  status <- cxnRead cxn 1
-  case BS.head status of
-    0 -> deserializeResponse . (status <>) <$> cxnRead cxn successResponseBodyLength
-    1 -> deserializeResponse . (status <>) <$> cxnRead cxn errorResponseBodyLength
-    _ -> pure $ Left "unknown status"
 
 search :: (MonadIO m) => QuoteRepository m -> Connection -> m Text
 search repo cxn =
@@ -80,7 +70,7 @@ testResponse (Response _ (Right value)) = fst threshold > value && value < snd t
 testResponse _ = False
 
 perplexity ::
-  (MonadIO m, MonadState RequestId m) => Connection -> Text -> m (Either String Response)
+  (MonadIO m, MonadState RequestId m) => Connection -> Text -> m (Either ProtocolError Response)
 perplexity cxn txt = do
   request <- prepareRequest $ \requestId ->
     Request
@@ -90,10 +80,30 @@ perplexity cxn txt = do
       }
   clientSend cxn request
 
-clientSend :: (MonadIO m) => Connection -> Request -> m (Either String Response)
+sendRequest :: Connection -> Request -> IO ()
+sendRequest = (. serializeRequest) . cxnWrite
+
+receiveResponse :: Connection -> IO (Either ProtocolError Response)
+receiveResponse cxn = do
+  status <- cxnRead cxn 1
+  bimap CodecError id
+    <$> case BS.head status of -- Mapping `ProtocolError` over the `ConnectionError`
+      0 -> deserializeResponse . (status <>) <$> cxnRead cxn successResponseBodyLength
+      1 -> deserializeResponse . (status <>) <$> cxnRead cxn errorResponseBodyLength
+      _ -> pure $ Left $ DeserializationError "unknown status"
+
+clientSend :: (MonadIO m) => Connection -> Request -> m (Either ProtocolError Response)
 clientSend cxn request = do
   liftIO $ sendRequest cxn request
-  liftIO $ receiveResponse cxn
+  response <- liftIO $ receiveResponse cxn
+  let validatedResponse = validateOrdering (requestId request) response
+  pure validatedResponse
+
+validateOrdering :: RequestId -> Either ProtocolError Response -> Either ProtocolError Response
+validateOrdering _ result@(Left _) = result
+validateOrdering expected result@(Right resp)
+  | (responseId resp /= expected) = Left OutOfOrderError
+  | otherwise = result
 
 type PartialRequest = RequestId -> Request
 
