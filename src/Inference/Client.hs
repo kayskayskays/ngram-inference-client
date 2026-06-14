@@ -5,8 +5,9 @@ module Inference.Client where
 import Control.Monad.State (
   MonadIO (liftIO),
   MonadState (get, put),
-  StateT,
+  StateT (StateT, runStateT),
   evalStateT,
+  modify,
  )
 import Control.Monad.Trans (lift)
 import Data.Bifunctor (Bifunctor (bimap))
@@ -20,7 +21,7 @@ import Inference.Codec (
   serializeRequest,
   successResponseBodyLength,
  )
-import Inference.Error (CodecError (DeserializationError), ProtocolError (CodecError, OutOfOrderError))
+import Inference.Error (CodecError (DeserializationError), ProtocolError (CodecError, ExceededAttemptLimit, OutOfOrderError))
 import Inference.Protocol (
   Opcode (Perplexity),
   Request (..),
@@ -46,21 +47,33 @@ connectionFromHandle handle =
     , cxnRead = BS.hGet handle
     }
 
-search :: (MonadIO m) => QuoteRepository m -> Connection -> m Text
+search :: (MonadIO m) => QuoteRepository m -> Connection -> m (Either ProtocolError Text)
 search repo cxn =
-  evalStateT (search0 repo) 0
+  evalStateT (search0 repo) (0, 0)
  where
-  search0 :: (MonadIO m) => QuoteRepository m -> StateT RequestId m Text
+  search0 :: (MonadIO m) => QuoteRepository m -> StateT (Int, RequestId) m (Either ProtocolError Text)
   search0 repo = do
+    modify $ \(count, reqId) -> (count + 1, reqId)
+    currentCount <- fst <$> get
+
     quote <- lift $ nextQuote repo
-    result <- perplexity cxn quote
+    result <- liftRequestIdState $ perplexity cxn quote
 
     case result of
-      Left err -> search0 repo
-      Right response ->
-        if testResponse response
-          then pure quote
-          else search0 repo
+      Right response
+        | testResponse response -> pure $ Right quote
+        | currentCount > maxAttempts -> pure $ Left ExceededAttemptLimit
+        | otherwise -> search0 repo
+      Left err -> pure $ Left err
+
+{- Lifts a `StateT RequestId m` into a `StateT (Int, RequestId) m`. -}
+liftRequestIdState :: (MonadIO m) => StateT RequestId m a -> StateT (Int, RequestId) m a
+liftRequestIdState requestIdState = StateT $ \(count, reqId) -> do
+  (result, reqId') <- runStateT requestIdState reqId
+  pure (result, (count, reqId'))
+
+maxAttempts :: Int
+maxAttempts = 100
 
 threshold :: (Double, Double)
 threshold = (5, 90)
