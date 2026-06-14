@@ -14,10 +14,12 @@ import Network.Socket (
   socket,
   socketToHandle,
  )
+import Inference.Error (ProtocolError)
+import Inference.Error (protocolErrorString)
 
 main :: IO ()
 main = do
-  quote <-
+  searchResult <-
     bracket
       openConnection
       hClose
@@ -25,7 +27,11 @@ main = do
         let cxn = connectionFromHandle handle
         let repo = constantRepo $ pack "hi"
         search repo cxn
-  print quote
+  print $ searchResultToString searchResult
+
+searchResultToString :: Either ProtocolError Text -> Text
+searchResultToString (Left err) = protocolErrorString err
+searchResultToString (Right quote) = quote
 
 openConnection :: IO Handle
 openConnection = do
