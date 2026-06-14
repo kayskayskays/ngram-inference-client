@@ -80,8 +80,10 @@ executable inference-client
 
     -- Other library packages from which modules are imported.
     build-depends:    
-        inference-client
+      , network ^>=3.2.8.0
+      , inference-client
       , base ^>=4.20.2.0
+      , text
 
     -- Directories containing source files.
     hs-source-dirs:   app
