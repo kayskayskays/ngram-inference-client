@@ -62,7 +62,7 @@ search repo cxn =
     case result of
       Right response
         | testResponse response -> pure $ Right quote
-        | currentCount > maxAttempts -> pure $ Left ExceededAttemptLimit
+        | currentCount == maxAttempts -> pure $ Left ExceededAttemptLimit
         | otherwise -> search0 repo
       Left err -> pure $ Left err
 
