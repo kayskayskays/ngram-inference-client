@@ -1,10 +1,10 @@
 module Inference.Protocol where
 
 import Data.Text (Text)
-import Data.Word
-  ( Word64,
-    Word8,
-  )
+import Data.Word (
+  Word64,
+  Word8,
+ )
 
 data Opcode
   = Perplexity
@@ -33,18 +33,26 @@ wordToInferenceErrorCode 5 = ConnectionError
 wordToInferenceErrorCode _ = UnknownError
 
 data Request = Request
-  { requestId :: Word64,
-    opcode :: Opcode,
-    text :: Text
+  { requestId :: Word64
+  , opcode :: Opcode
+  , text :: Text
   }
 
 data Response = Response
-  { responseId :: Word64,
-    value :: Either InferenceErrorCode Double
+  { responseId :: Word64
+  , value :: Either InferenceErrorCode Double
   }
 
 okResponse :: Word64 -> Double -> Response
-okResponse responseId value = Response {responseId = responseId, value = Right value}
+okResponse responseId value =
+  Response
+    { responseId = responseId
+    , value = Right value
+    }
 
 errorResponse :: Word64 -> Word8 -> Response
-errorResponse responseId errorCode = Response {responseId = responseId, value = Left $ wordToInferenceErrorCode errorCode}
+errorResponse responseId errorCode =
+  Response
+    { responseId = responseId
+    , value = Left $ wordToInferenceErrorCode errorCode
+    }
