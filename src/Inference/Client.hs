@@ -28,6 +28,7 @@ import Inference.Protocol (
   Response (Response, responseId, value),
  )
 import System.IO (Handle)
+import GHC.IO.Exception (IOErrorType(ProtocolError))
 
 data Connection = Connection
   { cxnWrite :: BS.ByteString -> IO ()
@@ -59,12 +60,13 @@ search repo cxn =
     quote <- lift $ nextQuote repo
     result <- liftRequestIdState $ perplexity cxn quote
 
-    case result of
-      Right response
-        | testResponse response -> pure $ Right quote
-        | currentCount == maxAttempts -> pure $ Left ExceededAttemptLimit
-        | otherwise -> search0 repo
-      Left err -> pure $ Left err
+    let
+      handleResponse resp 
+        | testResponse resp = pure $ Right quote 
+        | currentCount == maxAttempts = pure $ Left ExceededAttemptLimit
+        | otherwise = search0 repo
+
+    either (pure . Left) handleResponse result
 
 {- Lifts a `StateT RequestId m` into a `StateT (Int, RequestId) m`. -}
 liftRequestIdState :: (MonadIO m) => StateT RequestId m a -> StateT (Int, RequestId) m a
