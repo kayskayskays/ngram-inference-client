@@ -38,8 +38,6 @@ newtype QuoteRepository m = QuoteRepository
 
 type RequestId = Word64
 
-type Client m a = StateT RequestId m a
-
 connectionFromHandle :: Handle -> Connection
 connectionFromHandle handle =
   Connection
@@ -62,7 +60,7 @@ search :: (MonadIO m) => QuoteRepository m -> Connection -> m Text
 search repo cxn =
   evalStateT (search0 repo) 0
  where
-  search0 :: (MonadIO m) => QuoteRepository m -> Client m Text
+  search0 :: (MonadIO m) => QuoteRepository m -> StateT RequestId m Text
   search0 repo = do
     quote <- lift $ nextQuote repo
     result <- perplexity cxn quote
