@@ -55,6 +55,7 @@ library
     Inference.Client
     Inference.Protocol
     Inference.Codec
+    Inference.Error
 
   hs-source-dirs:     src
   
