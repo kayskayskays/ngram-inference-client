@@ -5,6 +5,7 @@ import GHC.IO (bracket)
 import GHC.IO.Handle (Handle, hClose)
 import GHC.IO.IOMode (IOMode (ReadWriteMode))
 import Inference.Client (QuoteRepository (QuoteRepository, nextQuote), connectionFromHandle, search)
+import Inference.Error (ProtocolError, protocolErrorString)
 import Network.Socket (
   Family (AF_UNIX),
   SockAddr (SockAddrUnix),
@@ -14,8 +15,6 @@ import Network.Socket (
   socket,
   socketToHandle,
  )
-import Inference.Error (ProtocolError)
-import Inference.Error (protocolErrorString)
 
 main :: IO ()
 main = do

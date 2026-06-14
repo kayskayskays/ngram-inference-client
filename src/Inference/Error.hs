@@ -20,12 +20,11 @@ data ProtocolError
   | ExceededAttemptLimit
 
 protocolErrorString :: ProtocolError -> Text
-protocolErrorString err = pack $ case err of 
-    CodecError codecErr -> case codecErr of
-        DeserializationError s -> s
-    OutOfOrderError -> "received an out-of-order response"
-    ExceededAttemptLimit -> "exceeded max quote generation attempts"
-
+protocolErrorString err = pack $ case err of
+  CodecError codecErr -> case codecErr of
+    DeserializationError s -> s
+  OutOfOrderError -> "received an out-of-order response"
+  ExceededAttemptLimit -> "exceeded max quote generation attempts"
 
 wordToInferenceErrorCode :: Word8 -> InferenceErrorCode
 wordToInferenceErrorCode 1 = InvalidOpcode
